@@ -93,6 +93,12 @@ You can do as many as you like. We suspect though that once you start you won't 
 4. Source code of the data pipeline infrastructure (Step 4)
 5. Any README or documentation you feel would help us navigate your quest.
 
+### Q. How do I share the submission?
+Your submission should be presented as one or both of the following:
+
+1. A link to a public hosted git repository in your own namespace
+1. A compressed file containing your project directory (zip, tgz, etc). Include the .git sub-directory if you used git.
+
 ### Q. What if I successfully complete all the steps?
 We have many more for you to solve as a member of the Rearc team!
 
