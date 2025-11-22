@@ -1,8 +1,7 @@
-"""Analytics queries using pandas and duckdb."""
+"""Analytics queries using only pandas for approachability."""
 
 from __future__ import annotations
 
-import duckdb
 import pandas as pd
 
 from common.aws import S3Location, read_tabular_object
@@ -47,21 +46,14 @@ def population_stats(population_df: pd.DataFrame) -> pd.DataFrame:
 def best_year_by_series(bls_df: pd.DataFrame) -> pd.DataFrame:
     """For each series_id, find the year with the max summed quarterly value."""
 
-    query = """
-        SELECT
-            series_id,
-            year,
-            SUM(CAST(value AS DOUBLE)) AS value,
-            ROW_NUMBER() OVER (PARTITION BY series_id ORDER BY SUM(CAST(value AS DOUBLE)) DESC, year ASC) AS rn
-        FROM bls
-        WHERE period LIKE 'Q%'
-        GROUP BY series_id, year
-        QUALIFY rn = 1
-        ORDER BY series_id
-    """
-    con = duckdb.connect()
-    con.register("bls", bls_df)
-    return con.execute(query).df()
+    quarterly = bls_df[bls_df["period"].str.startswith("Q")].copy()
+    quarterly["value"] = pd.to_numeric(quarterly["value"], errors="coerce")
+    grouped = quarterly.groupby(["series_id", "year"], as_index=False)["value"].sum()
+
+    # Within each series, pick the row with the highest yearly total.
+    ordered = grouped.sort_values(["series_id", "value", "year"], ascending=[True, False, True])
+    winners = ordered.groupby("series_id", as_index=False).head(1)
+    return winners.reset_index(drop=True)
 
 
 def series_with_population(bls_df: pd.DataFrame, population_df: pd.DataFrame) -> pd.DataFrame:

@@ -4,7 +4,7 @@ package-ingest:
 @echo "Package ingest lambda (zip or image)"
 
 package-analytics:
-@echo "Package analytics lambda with pandas/duckdb layer or image"
+@echo "Package analytics lambda with pandas layer or image"
 
 deploy:
 @echo "Deploy CloudFormation stack using infrastructure/cloudformation/template.yaml"

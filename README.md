@@ -93,6 +93,8 @@ You can do as many as you like. We suspect though that once you start you won't 
 4. Source code of the data pipeline infrastructure (Step 4)
 5. Any README or documentation you feel would help us navigate your quest.
 
+For a quick plain-English walkthrough of this repository's structure, see `SIMPLIFIED_OVERVIEW.md`.
+
 ### Q. How do I share the submission?
 Your submission should be emailed back to us as one or both of the following:
 

@@ -1,10 +1,15 @@
-"""Lightweight AWS helpers for S3 access and manifest tracking."""
+"""Lightweight, easy-to-follow AWS-style helpers.
+
+These utilities intentionally avoid boto3 to keep the demo self contained.
+An in-memory client mimics S3 so the ingest and analytics steps can be
+walked through locally without extra services.
+"""
 
 from __future__ import annotations
 
 import io
 from dataclasses import dataclass
-from typing import Iterable, Protocol
+from typing import Iterable
 
 import pandas as pd
 
@@ -21,16 +26,10 @@ class S3Location:
 
 @dataclass
 class S3SyncResult:
+    """Simple summary of what changed during a sync."""
+
     uploaded: list[str]
     deleted: list[str]
-
-
-class SupportsRead(Protocol):
-    def get_object(self, bucket: str, key: str) -> bytes: ...
-
-    def put_object(self, bucket: str, key: str, body: bytes, content_type: str | None = None) -> None: ...
-
-    def list_objects(self, bucket: str, prefix: str) -> list[str]: ...
 
 
 class InMemoryS3Client:
@@ -52,23 +51,44 @@ class InMemoryS3Client:
         self.objects.pop((bucket, key), None)
 
 
+DEFAULT_CLIENT = InMemoryS3Client()
+
+
+def _get_client(client: InMemoryS3Client | None = None) -> InMemoryS3Client:
+    """Return a shared in-memory client so data persists across calls."""
+
+    return client or DEFAULT_CLIENT
+
+
 def ensure_bucket_prefix(bucket: str, prefix: str) -> None:
-    """Placeholder to ensure S3 location is reachable.
+    """Placeholder to ensure S3 location is reachable."""
 
-    In production, use boto3 to validate/create prefixes or buckets.
+
+def sync_s3_objects(
+    destination: S3Location, object_keys: Iterable[str], client: InMemoryS3Client | None = None
+) -> S3SyncResult:
+    """Plan uploads/deletes against the in-memory store.
+
+    *Desired* keys are provided relative to the destination prefix; existing
+    keys are discovered from the client. This mirrors how a manifest-based
+    sync would behave without pulling in boto3.
     """
 
+    client = _get_client(client)
+    desired = [f"{destination.prefix}{key}" for key in object_keys]
+    desired_set = set(desired)
+    existing = set(client.list_objects(destination.bucket, destination.prefix))
 
-def sync_s3_objects(destination: S3Location, object_keys: Iterable[str], session: SupportsRead) -> S3SyncResult:
-    """Sync a collection of object keys to the destination.
+    uploads = sorted(desired_set - existing)
+    deletes = sorted(existing - desired_set)
 
-    The implementation here is a stub that reports planned uploads/deletions
-    but does not perform them. Replace with boto3-driven logic when wiring to
-    AWS.
-    """
+    # Store placeholder bytes for uploaded objects so analytics can read them
+    # later if needed.
+    for key in uploads:
+        client.put_object(destination.bucket, key, b"", content_type="text/plain")
+    for key in deletes:
+        client.delete_object(destination.bucket, key)
 
-    uploads = [key for key in object_keys]
-    deletes: list[str] = []
     return S3SyncResult(uploaded=uploads, deleted=deletes)
 
 
@@ -78,7 +98,7 @@ def put_json_object(destination: S3Location, key: str, content: dict, client: In
     import json
 
     body = json.dumps(content, indent=2).encode()
-    client = client or InMemoryS3Client()
+    client = _get_client(client)
     client.put_object(destination.bucket, f"{destination.prefix}{key}", body, content_type="application/json")
 
 
@@ -96,14 +116,14 @@ def put_tabular_object(
         content_type = "text/csv"
     else:
         raise ValueError(f"Unsupported format: {format}")
-    client = client or InMemoryS3Client()
+    client = _get_client(client)
     client.put_object(destination.bucket, f"{destination.prefix}{key}", buffer.getvalue(), content_type=content_type)
 
 
 def read_tabular_object(location: S3Location, key: str, format: str, client: InMemoryS3Client | None = None) -> pd.DataFrame:
     """Read a tabular object from S3 into a DataFrame."""
 
-    client = client or InMemoryS3Client()
+    client = _get_client(client)
     body = client.get_object(location.bucket, f"{location.prefix}{key}")
     buffer = io.BytesIO(body)
     if format == "csv":
@@ -122,5 +142,4 @@ __all__ = [
     "put_tabular_object",
     "read_tabular_object",
     "InMemoryS3Client",
-    "SupportsRead",
 ]
