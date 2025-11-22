@@ -1,0 +1,11 @@
+{
+  "Parameters": {
+    "DataBucketName": "rearc-quest-data",
+    "ContactEmail": "data-team@example.com",
+    "ScheduleExpression": "rate(1 day)",
+    "BLSPrefix": "bls/",
+    "PopulationRawPrefix": "population/raw/",
+    "PopulationTablePrefix": "population/tables/",
+    "ReportsPrefix": "reports/"
+  }
+}

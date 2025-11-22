@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Rearc Quest data pipeline with ingest and analytics Lambdas.
+
+Parameters:
+  DataBucketName:
+    Type: String
+    Description: Bucket for storing ingested datasets and reports.
+  ContactEmail:
+    Type: String
+    Description: Contact email embedded in User-Agent headers.
+  ScheduleExpression:
+    Type: String
+    Default: rate(1 day)
+    Description: EventBridge schedule for daily ingest.
+  BLSPrefix:
+    Type: String
+    Default: bls/
+  PopulationRawPrefix:
+    Type: String
+    Default: population/raw/
+  PopulationTablePrefix:
+    Type: String
+    Default: population/tables/
+  ReportsPrefix:
+    Type: String
+    Default: reports/
+
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref DataBucketName
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: !Ref PopulationRawPrefix
+            Queue: !GetAtt AnalyticsQueue.Arn
+    DeletionPolicy: Retain
+
+  AnalyticsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
+
+  IngestFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                  - s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::${DataBucketName}
+                  - !Sub arn:aws:s3:::${DataBucketName}/*
+
+  AnalyticsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${DataBucketName}
+                  - !Sub arn:aws:s3:::${DataBucketName}/*
+        - PolicyName: SQSPoller
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt AnalyticsQueue.Arn
+
+  IngestFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.11
+      Handler: src/lambda_handlers/ingest_handler.handler
+      Role: !GetAtt IngestFunctionRole.Arn
+      Code:
+        S3Bucket: placeholder-artifact-bucket
+        S3Key: ingest.zip
+      Environment:
+        Variables:
+          DATA_BUCKET: !Ref DataBucketName
+          BLS_PREFIX: !Ref BLSPrefix
+          POPULATION_RAW_PREFIX: !Ref PopulationRawPrefix
+          POPULATION_TABLE_PREFIX: !Ref PopulationTablePrefix
+          CONTACT_EMAIL: !Ref ContactEmail
+      Timeout: 300
+
+  AnalyticsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.11
+      Handler: src/lambda_handlers/analytics_handler.handler
+      Role: !GetAtt AnalyticsFunctionRole.Arn
+      Code:
+        S3Bucket: placeholder-artifact-bucket
+        S3Key: analytics.zip
+      Environment:
+        Variables:
+          DATA_BUCKET: !Ref DataBucketName
+          BLS_PREFIX: !Ref BLSPrefix
+          POPULATION_TABLE_PREFIX: !Ref PopulationTablePrefix
+      Timeout: 300
+      Events:
+        PopulationSQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt AnalyticsQueue.Arn
+            BatchSize: 1
+
+  IngestSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Daily schedule to run ingest Lambda.
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt IngestFunction.Arn
+          Id: IngestScheduleTarget
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref IngestFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt IngestSchedule.Arn
+
+Outputs:
+  DataBucket:
+    Value: !Ref DataBucketName
+    Description: Bucket for ingested datasets and reports.
+  AnalyticsQueueUrl:
+    Value: !Ref AnalyticsQueue
+    Description: Queue receiving S3 notifications for population ingest.
