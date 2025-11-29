@@ -26,6 +26,18 @@ class BaseRequestSession:
         response.raise_for_status()
         return json.loads(response.text)
 
+    def get_text(self, url: str) -> str:
+        LOGGER.debug("Fetching text", extra={"url": url})
+        response = requests.get(url, headers=self._headers(), timeout=30)
+        response.raise_for_status()
+        return response.text
+
+    def get_bytes(self, url: str) -> bytes:
+        LOGGER.debug("Fetching bytes", extra={"url": url})
+        response = requests.get(url, headers=self._headers(), timeout=30)
+        response.raise_for_status()
+        return response.content
+
 
 @dataclass
 class BLSRequestSession(BaseRequestSession):

@@ -5,13 +5,13 @@ normalized tabular outputs to S3.
 """
 
 from __future__ import annotations
-
+import io
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable
 
 import pandas as pd
 
-from common.aws import S3Location, put_json_object, put_tabular_object
+from common.aws import S3Location, put_text_object, put_tabular_object
 from common.http import DataUSARequestSession
 from common.logging import get_logger
 
@@ -27,9 +27,8 @@ class DataUSAConfig:
     table_prefix: str
     contact_email: str
     api_url: str = (
-        "https://honolulu-api.datausa.io/tesseract/data.jsonrecords?"
-        "cube=acs_yg_total_population_1&drilldowns=Year%2CNation&locale=en&"
-        "measures=Population"
+        "https://honolulu-api.datausa.io/tesseract/data.csv?"
+        "cube=acs_yg_total_population_1&drilldowns=Year,Nation&measures=Population"
     )
 
     def raw_destination(self) -> S3Location:
@@ -39,15 +38,12 @@ class DataUSAConfig:
         return S3Location(bucket=self.bucket, prefix=self.table_prefix)
 
 
-def normalize_records(records: Iterable[Dict[str, Any]]) -> pd.DataFrame:
+def normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
     """Convert API records to a normalized DataFrame."""
-
-    frame = pd.DataFrame(records)
-    expected_columns = {"Year", "Nation", "Population"}
-    missing = expected_columns - set(frame.columns)
-    if missing:
-        raise ValueError(f"Missing expected fields: {missing}")
-    frame.rename(columns={"Year": "year", "Nation": "nation", "Population": "population"}, inplace=True)
+    frame.rename(
+        columns={"Year": "year", "Nation": "nation", "Population": "population"},
+        inplace=True,
+    )
     return frame[["year", "nation", "population"]]
 
 
@@ -56,16 +52,44 @@ def fetch_and_store(config: DataUSAConfig) -> None:
 
     session = DataUSARequestSession(contact_email=config.contact_email)
     LOGGER.info("Requesting DataUSA population data", extra={"url": config.api_url})
-    response_json = session.get_json(config.api_url)
-    records = response_json.get("data", [])
-    put_json_object(destination=config.raw_destination(), key="population.json", content=response_json)
-    table = normalize_records(records)
-    put_tabular_object(destination=config.table_destination(), key="population.parquet", frame=table, format="parquet")
-    put_tabular_object(destination=config.table_destination(), key="population.csv", frame=table, format="csv")
+    response_text = session.get_text(config.api_url)
+    put_text_object(
+        destination=config.raw_destination(),
+        key="population.csv",
+        content=response_text,
+    )
 
+    table = pd.read_csv(io.StringIO(response_text))
+    table = normalize_frame(table)
+
+    put_tabular_object(
+        destination=config.table_destination(),
+        key="population.csv",
+        frame=table,
+        format="csv",
+    )
 
 __all__ = [
     "DataUSAConfig",
-    "normalize_records",
     "fetch_and_store",
+    "normalize_frame",
 ]
+
+if __name__ == "__main__":
+    from moto import mock_aws
+    import boto3
+
+    # This block is for local testing only
+    with mock_aws():
+        config = DataUSAConfig(
+            bucket="rearc-quest-testing-bucket",
+            raw_prefix="population_data/raw/",
+            table_prefix="population_data/tables/",
+            contact_email="test@test.com",
+        )
+        s3 = boto3.client("s3")
+        s3.create_bucket(Bucket=config.bucket)
+        
+        fetch_and_store(config)
+        print("Fetch and store complete.")
+

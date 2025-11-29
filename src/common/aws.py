@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -32,7 +33,8 @@ class S3SyncResult:
 
 def _get_client():
     """Return a shared in-memory client so data persists across calls."""
-    return boto3.client("s3")
+    session = boto3.Session(profile_name=os.environ.get("AWS_PROFILE"))
+    return session.client("s3")
 
 
 def ensure_bucket_prefix(bucket: str, prefix: str) -> None:
@@ -87,28 +89,41 @@ def put_json_object(destination: S3Location, key: str, content: dict) -> None:
     )
 
 
-def put_tabular_object(destination: S3Location, key: str, frame: pd.DataFrame, format: str) -> None:
-    """Write pandas DataFrame to S3 in the requested format."""
-
-    buffer = io.BytesIO()
-    if format == "parquet":
-        frame.to_parquet(buffer, index=False)
-        content_type = "application/octet-stream"
-    elif format == "csv":
-        buffer.write(frame.to_csv(index=False).encode())
-        content_type = "text/csv"
-    else:
-        raise ValueError(f"Unsupported format: {format}")
+def put_text_object(destination: S3Location, key: str, content: str) -> None:
+    """Store plain text to S3."""
+    body = content.encode()
     client = _get_client()
     client.put_object(
         Bucket=destination.bucket,
         Key=f"{destination.prefix}{key}",
-        Body=buffer.getvalue(),
+        Body=body,
+        ContentType="text/plain",
+    )
+
+
+
+def put_tabular_object(destination: S3Location, key: str, frame: pd.DataFrame, format: str) -> None:
+    """Write pandas DataFrame to S3 in the requested format."""
+    
+    if format == "parquet":
+        body = frame.to_parquet(index=False)
+        content_type = "application/octet-stream"
+    elif format == "csv":
+        body = frame.to_csv(index=False).encode()
+        content_type = "text/csv"
+    else:
+        raise ValueError(f"Unsupported format: {format}")
+
+    client = _get_client()
+    client.put_object(
+        Bucket=destination.bucket,
+        Key=f"{destination.prefix}{key}",
+        Body=body,
         ContentType=content_type,
     )
 
 
-def read_tabular_object(location: S3Location, key: str, format: str) -> pd.DataFrame:
+def read_tabular_object(location: S3Location, key: str, format: str, **kwargs) -> pd.DataFrame:
     """Read a tabular object from S3 into a DataFrame."""
 
     client = _get_client()
@@ -116,7 +131,7 @@ def read_tabular_object(location: S3Location, key: str, format: str) -> pd.DataF
     body = response["Body"].read()
     buffer = io.BytesIO(body)
     if format == "csv":
-        return pd.read_csv(buffer)
+        return pd.read_csv(buffer, **kwargs)
     if format == "parquet":
         return pd.read_parquet(buffer)
     raise ValueError(f"Unsupported format: {format}")
@@ -126,8 +141,9 @@ __all__ = [
     "S3Location",
     "S3SyncResult",
     "ensure_bucket_prefix",
-    "sync_s3_objects",
     "put_json_object",
     "put_tabular_object",
+    "put_text_object",
     "read_tabular_object",
+    "sync_s3_objects",
 ]

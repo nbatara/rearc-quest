@@ -2,7 +2,7 @@
   "Parameters": {
     "DataBucketName": "rearc-quest-data-nbatara-2025",
     "ContactEmail": "nickbatara@gmail.com",
-    "ScheduleExpression": "cron(0 * * * ? *)",
+    "ScheduleExpression": "cron(0 3 * * ? *)",
     "BLSPrefix": "bls/",
     "PopulationRawPrefix": "population/raw/",
     "PopulationTablePrefix": "population/tables/",

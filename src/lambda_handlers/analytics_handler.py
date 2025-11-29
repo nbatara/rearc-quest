@@ -35,4 +35,12 @@ def handler(event, context):
     return {"status": "ok", "tables": summary}
 
 
+if __name__ == "__main__":
+    #This block is for local testing only
+    os.environ["DATA_BUCKET"] = "rearc-quest-testing-bucket"
+    os.environ["BLS_PREFIX"] = "bls_data/"
+    os.environ["POPULATION_TABLE_PREFIX"] = "population_data/tables/"
+    print(handler(None, None))
+
+
 __all__ = ["handler"]

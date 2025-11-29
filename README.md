@@ -25,17 +25,38 @@ This repo is a small tour of the Rearc Data Quest. The code stays minimal so you
 - When you are ready for AWS, replace the client with `boto3` and deploy with the CloudFormation template.
 
 ## Helper scripts
-- `scripts/parameters_to_overrides.py infrastructure/cloudformation/parameters.json` prints a `Key=Value` string you can pass to `aws cloudformation deploy --parameter-overrides`.
+- `scripts/parameters_to_overrides.py infrastructure/cloudformation/parameters.json` prints a `Key=Value` string you can drop into `aws cloudformation deploy --parameter-overrides`.
 
 ## Command Log
+### Configure parameters.json and .env
+
 ### Configure AWS
 Created IAM User
-Created and attached policy for S3, SNS, CloudFormation
-### Zip and Upload code to s3
-zip -r ingest.zip src/lambda_handlers/ingest_handler.py src src/common
-zip -r analytics.zip src/lambda_handlers/analytics_handler.py src/common src/analytics.py src/datausa_fetch.py
-aws s3 cp ingest.zip s3://rearc-quest-deploy-bucket/ingest.zip --region us-east-2                                    
-aws s3 cp analytics.zip s3://rearc-quest-deploy-bucket/analytics.zip --region us-east-2
+Created and attached policy AdministratorAccess to make things easy for this quest. We should probably not do this for a real client.
+### Make your S3 buckets!
+aws s3 mb s3://$DATA_BUCKET --region us-east-2
+aws s3 mb s3://$DEPLOYMENT_BUCKET --region us-east-2
+
+### Build the libraries in the requirements file using docker lambda image and zip for s3 upload
+docker run --rm --platform linux/amd64 \
+  -v "$PWD":/var/task \
+  -w /var/task \
+  --entrypoint /bin/bash \
+  public.ecr.aws/lambda/python:3.11 \
+  -c "
+    yum install -y zip gcc gcc-c++ make >/dev/null 2>&1 || true
+    rm -rf build lambda-package.zip
+    mkdir -p build
+    pip install --upgrade pip >/dev/null 2>&1
+    pip install -r requirements.txt -t build --only-binary=:all:
+    cp -R src build/
+    # kill anything that makes numpy think it's in a source tree at the root
+    find build -maxdepth 1 -type f \( -name 'setup.py' -o -name 'pyproject.toml' -o -name 'PKG-INFO' \) -delete
+    cd build
+    zip -r ../lambda-package.zip . >/dev/null
+  "
+
+aws s3 cp lambda-package.zip s3://$DEPLOYMENT_BUCKET/lambda-package.zip --region "$REGION"
 ### Deploy Stack
 PARAM_OVERRIDES=$(
   jq -r '.Parameters
@@ -43,6 +64,7 @@ PARAM_OVERRIDES=$(
          | map("\(.key)=\(.value|@sh)")
          | join(" ")' infrastructure/cloudformation/parameters.json
 )
+
 eval aws cloudformation deploy \
   --region "$REGION" \
   --stack-name "$STACK_NAME" \
@@ -50,8 +72,39 @@ eval aws cloudformation deploy \
   --parameter-overrides $PARAM_OVERRIDES \
   --capabilities CAPABILITY_NAMED_IAM
 
-  ### If You have issues you can investigate with
-  aws cloudformation describe-change-set \
-  --region us-east-2 \
-  --stack-name $STACK_NAME \
-  --change-set-name awscli-cloudformation-package-deploy-1764371321
+### If you need to update your Lambda functions (have to find and update the function-names because they are unique for your deploy):
+aws lambda update-function-code \
+--function-name rearc-quest-deploy-AnalyticsFunction-VtVDQFIzc51O \
+--s3-bucket rearc-quest-deploy-bucket \
+--s3-key lambda-package.zip \
+--region us-east-2;
+aws lambda update-function-code \
+--function-name rearc-quest-deploy-IngestFunction-4faxGAROSrEF \
+--s3-bucket rearc-quest-deploy-bucket \
+--s3-key lambda-package.zip \
+--region us-east-2;
+
+### If You have issues you can investigate with
+
+aws cloudformation describe-stack-events \
+--region us-east-2 \
+--stack-name rearc-quest-deploy
+
+aws cloudformation list-change-sets \
+--region "$REGION" \
+--stack-name "$STACK_NAME"
+
+aws cloudformation describe-change-set \
+--region us-east-2 \
+--stack-name $STACK_NAME \
+--change-set-name [change set name from output of above command here]
+
+aws cloudformation delete-stack \
+--stack-name $STACK_NAME \
+--region "$REGION"
+
+### Test Functions
+aws --no-cli-pager lambda invoke \
+  --function-name rearc-quest-deploy-IngestFunction-4faxGAROSrEF \
+  --region "$REGION" \
+  /dev/stdout

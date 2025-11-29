@@ -25,14 +25,30 @@ class AnalyticsConfig:
 def load_bls_dataset(location: S3Location) -> pd.DataFrame:
     """Load the BLS current data file into a DataFrame."""
 
-    return read_tabular_object(location, key="pr.data.0.Current", format="csv")
+    df = read_tabular_object(
+        location,
+        key="pr.data.0.Current",
+        format="csv",
+        delimiter="\t",
+        header=0,
+        names=["series_id", "year", "period", "value", "footnote_codes"],
+    )
+    # Clean up fields
+    df["series_id"] = df["series_id"].str.strip()
+
+    # Ensure year is numeric so it matches population_df['year'] (int)
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
+
+    # Make value numeric for downstream aggregations
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
+    return df
 
 
 def load_population_dataset(location: S3Location) -> pd.DataFrame:
     """Load normalized population data."""
 
-    return read_tabular_object(location, key="population.parquet", format="parquet")
-
+    return read_tabular_object(location, key="population.csv", format="csv")
 
 def population_stats(population_df: pd.DataFrame) -> pd.DataFrame:
     """Compute mean and standard deviation of annual US population for 2013-2018."""
@@ -78,6 +94,39 @@ def run_analytics(config: AnalyticsConfig) -> dict[str, pd.DataFrame]:
     for name, frame in outputs.items():
         LOGGER.info("Computed analytic table", extra={"table": name, "rows": len(frame)})
     return outputs
+
+
+if __name__ == "__main__":
+    from moto import mock_aws
+    import boto3
+    from common.aws import S3Location
+    import pandas as pd
+    import io
+
+    # This block is for local testing only
+    with mock_aws():
+        config = AnalyticsConfig(
+            bls_location=S3Location(bucket="rearc-quest-testing-bucket", prefix="bls_data/"),
+            population_location=S3Location(
+                bucket="rearc-quest-testing-bucket", prefix="population_data/tables/"
+            ),
+        )
+        s3 = boto3.client("s3")
+        s3.create_bucket(Bucket=config.bls_location.bucket)
+
+        # Create dummy files for analytics to run
+        bls_key = f"{config.bls_location.prefix}pr.data.0.Current"
+        s3.put_object(Bucket=config.bls_location.bucket, Key=bls_key, Body="series_id\tyear\tperiod\tvalue\tfootnote_codes\n".encode('utf-8'))
+
+        pop_key = f"{config.population_location.prefix}population.csv"
+        empty_df = pd.DataFrame({'year': [], 'nation': [], 'population': []})
+        s3.put_object(Bucket=config.population_location.bucket, Key=pop_key, Body=empty_df.to_csv(index=False).encode('utf-8'))
+
+        outputs = run_analytics(config)
+        for name, df in outputs.items():
+            print(f"--- {name} ---")
+            print(df)
+
 
 
 __all__ = [

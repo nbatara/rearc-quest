@@ -1,1 +1,0 @@
-BLSPrefix=bls/ ContactEmail=nickbatara@gmail.com DataBucketName=rearc-quest-data DeploymentBucket=rearc-quest-deploy-bucket PopulationRawPrefix=population/raw/ PopulationTablePrefix=population/tables/ ReportsPrefix=reports/ ScheduleExpression='cron(0 * * * *)'
