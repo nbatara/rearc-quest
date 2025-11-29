@@ -11,6 +11,8 @@ You can view both the reports and data here:
 s3://rearc-quest-data-nbatara-2025  
 http://rearc-quest-data-nbatara-2025.s3-website.us-east-2.amazonaws.com
 
+## .ipynb
+See notebooks/analysis.ipynb
 
 ## Deployment & Testing
 You can deploy the CloudFormation stack and test the Lambdas using the Makefile:
