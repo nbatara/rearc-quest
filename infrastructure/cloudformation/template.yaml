@@ -24,6 +24,13 @@ Parameters:
   ReportsPrefix:
     Type: String
     Default: reports/
+  DeploymentBucket:
+    Type: String
+    Description: Bucket containing packaged Lambda artifacts.
+  LambdaArtifactKey:
+    Type: String
+    Default: lambda-package.zip
+    Description: S3 key of the shared Lambda artifact zip.
 
 Resources:
   DataBucket:
@@ -45,6 +52,24 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       VisibilityTimeout: 300
+
+  AnalyticsQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref AnalyticsQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3Notifications
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt AnalyticsQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Sub arn:aws:s3:::${DataBucketName}
 
   IngestFunctionRole:
     Type: AWS::IAM::Role
@@ -115,8 +140,8 @@ Resources:
       Handler: src/lambda_handlers/ingest_handler.handler
       Role: !GetAtt IngestFunctionRole.Arn
       Code:
-        S3Bucket: placeholder-artifact-bucket
-        S3Key: ingest.zip
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: !Ref LambdaArtifactKey
       Environment:
         Variables:
           DATA_BUCKET: !Ref DataBucketName
@@ -133,20 +158,21 @@ Resources:
       Handler: src/lambda_handlers/analytics_handler.handler
       Role: !GetAtt AnalyticsFunctionRole.Arn
       Code:
-        S3Bucket: placeholder-artifact-bucket
-        S3Key: analytics.zip
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: !Ref LambdaArtifactKey
       Environment:
         Variables:
           DATA_BUCKET: !Ref DataBucketName
           BLS_PREFIX: !Ref BLSPrefix
           POPULATION_TABLE_PREFIX: !Ref PopulationTablePrefix
       Timeout: 300
-      Events:
-        PopulationSQS:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt AnalyticsQueue.Arn
-            BatchSize: 1
+
+  AnalyticsQueueMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 1
+      EventSourceArn: !GetAtt AnalyticsQueue.Arn
+      FunctionName: !Ref AnalyticsFunction
 
   IngestSchedule:
     Type: AWS::Events::Rule

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List
 
-from common.aws import InMemoryS3Client, S3Location, S3SyncResult, ensure_bucket_prefix, sync_s3_objects
+from common.aws import S3Location, S3SyncResult, ensure_bucket_prefix, sync_s3_objects
 from common.http import BLSRequestSession
 from common.logging import get_logger
 
@@ -48,7 +48,7 @@ def crawl_index(session: BLSRequestSession, base_url: str) -> List[str]:
     return ["pr.data.0.Current", "pr.series"]
 
 
-def perform_sync(config: BLSSyncConfig, client: InMemoryS3Client | None = None) -> S3SyncResult:
+def perform_sync(config: BLSSyncConfig) -> S3SyncResult:
     """Run the BLS sync workflow.
 
     This function initializes the HTTP session with the required User-Agent,
@@ -63,7 +63,7 @@ def perform_sync(config: BLSSyncConfig, client: InMemoryS3Client | None = None) 
         "Starting S3 sync",
         extra={"bucket": config.bucket, "prefix": config.prefix, "objects": list(objects)},
     )
-    return sync_s3_objects(destination=config.destination(), object_keys=objects, client=client)
+    return sync_s3_objects(destination=config.destination(), object_keys=objects)
 
 
 __all__ = [

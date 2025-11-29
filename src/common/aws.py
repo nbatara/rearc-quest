@@ -1,17 +1,15 @@
-"""Lightweight, easy-to-follow AWS-style helpers.
-
-These utilities intentionally avoid boto3 to keep the demo self contained.
-An in-memory client mimics S3 so the ingest and analytics steps can be
-walked through locally without extra services.
-"""
+"""Lightweight, easy-to-follow AWS-style helpers."""
 
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import dataclass
 from typing import Iterable
 
+import boto3
 import pandas as pd
+from botocore.exceptions import ClientError
 
 
 @dataclass
@@ -32,41 +30,23 @@ class S3SyncResult:
     deleted: list[str]
 
 
-class InMemoryS3Client:
-    """Minimal in-memory client for local testing."""
-
-    def __init__(self) -> None:
-        self.objects: dict[tuple[str, str], bytes] = {}
-
-    def get_object(self, bucket: str, key: str) -> bytes:
-        return self.objects[(bucket, key)]
-
-    def put_object(self, bucket: str, key: str, body: bytes, content_type: str | None = None) -> None:
-        self.objects[(bucket, key)] = body
-
-    def list_objects(self, bucket: str, prefix: str) -> list[str]:
-        return [key for b, key in self.objects if b == bucket and key.startswith(prefix)]
-
-    def delete_object(self, bucket: str, key: str) -> None:
-        self.objects.pop((bucket, key), None)
-
-
-DEFAULT_CLIENT = InMemoryS3Client()
-
-
-def _get_client(client: InMemoryS3Client | None = None) -> InMemoryS3Client:
+def _get_client():
     """Return a shared in-memory client so data persists across calls."""
-
-    return client or DEFAULT_CLIENT
+    return boto3.client("s3")
 
 
 def ensure_bucket_prefix(bucket: str, prefix: str) -> None:
     """Placeholder to ensure S3 location is reachable."""
+    client = _get_client()
+    try:
+        client.head_bucket(Bucket=bucket)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            raise ValueError(f"Bucket not found: {bucket}") from e
+        raise
 
 
-def sync_s3_objects(
-    destination: S3Location, object_keys: Iterable[str], client: InMemoryS3Client | None = None
-) -> S3SyncResult:
+def sync_s3_objects(destination: S3Location, object_keys: Iterable[str]) -> S3SyncResult:
     """Plan uploads/deletes against the in-memory store.
 
     *Desired* keys are provided relative to the destination prefix; existing
@@ -74,10 +54,13 @@ def sync_s3_objects(
     sync would behave without pulling in boto3.
     """
 
-    client = _get_client(client)
+    client = _get_client()
     desired = [f"{destination.prefix}{key}" for key in object_keys]
     desired_set = set(desired)
-    existing = set(client.list_objects(destination.bucket, destination.prefix))
+
+    paginator = client.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=destination.bucket, Prefix=destination.prefix)
+    existing = set(obj["Key"] for page in pages for obj in page.get("Contents", []))
 
     uploads = sorted(desired_set - existing)
     deletes = sorted(existing - desired_set)
@@ -85,26 +68,26 @@ def sync_s3_objects(
     # Store placeholder bytes for uploaded objects so analytics can read them
     # later if needed.
     for key in uploads:
-        client.put_object(destination.bucket, key, b"", content_type="text/plain")
+        client.put_object(Bucket=destination.bucket, Key=key, Body=b"", ContentType="text/plain")
     for key in deletes:
-        client.delete_object(destination.bucket, key)
+        client.delete_object(Bucket=destination.bucket, Key=key)
 
     return S3SyncResult(uploaded=uploads, deleted=deletes)
 
 
-def put_json_object(destination: S3Location, key: str, content: dict, client: InMemoryS3Client | None = None) -> None:
+def put_json_object(destination: S3Location, key: str, content: dict) -> None:
     """Serialize JSON and store to S3."""
-
-    import json
-
     body = json.dumps(content, indent=2).encode()
-    client = _get_client(client)
-    client.put_object(destination.bucket, f"{destination.prefix}{key}", body, content_type="application/json")
+    client = _get_client()
+    client.put_object(
+        Bucket=destination.bucket,
+        Key=f"{destination.prefix}{key}",
+        Body=body,
+        ContentType="application/json",
+    )
 
 
-def put_tabular_object(
-    destination: S3Location, key: str, frame: pd.DataFrame, format: str, client: InMemoryS3Client | None = None
-) -> None:
+def put_tabular_object(destination: S3Location, key: str, frame: pd.DataFrame, format: str) -> None:
     """Write pandas DataFrame to S3 in the requested format."""
 
     buffer = io.BytesIO()
@@ -116,15 +99,21 @@ def put_tabular_object(
         content_type = "text/csv"
     else:
         raise ValueError(f"Unsupported format: {format}")
-    client = _get_client(client)
-    client.put_object(destination.bucket, f"{destination.prefix}{key}", buffer.getvalue(), content_type=content_type)
+    client = _get_client()
+    client.put_object(
+        Bucket=destination.bucket,
+        Key=f"{destination.prefix}{key}",
+        Body=buffer.getvalue(),
+        ContentType=content_type,
+    )
 
 
-def read_tabular_object(location: S3Location, key: str, format: str, client: InMemoryS3Client | None = None) -> pd.DataFrame:
+def read_tabular_object(location: S3Location, key: str, format: str) -> pd.DataFrame:
     """Read a tabular object from S3 into a DataFrame."""
 
-    client = _get_client(client)
-    body = client.get_object(location.bucket, f"{location.prefix}{key}")
+    client = _get_client()
+    response = client.get_object(Bucket=location.bucket, Key=f"{location.prefix}{key}")
+    body = response["Body"].read()
     buffer = io.BytesIO(body)
     if format == "csv":
         return pd.read_csv(buffer)
@@ -141,5 +130,4 @@ __all__ = [
     "put_json_object",
     "put_tabular_object",
     "read_tabular_object",
-    "InMemoryS3Client",
 ]
