@@ -6,6 +6,7 @@
     "BLSPrefix": "bls/",
     "PopulationRawPrefix": "population/raw/",
     "PopulationTablePrefix": "population/tables/",
-    "ReportsPrefix": "reports/"
+    "ReportsPrefix": "reports/",
+    "DeploymentBucket": "rearc-quest-deploy-bucket"
   }
 }

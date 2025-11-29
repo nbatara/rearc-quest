@@ -25,10 +25,13 @@ def handler(event, context):
     population_table_prefix = os.environ.get(
         "POPULATION_TABLE_PREFIX", "population/tables/"
     )
+    analytics_prefix = os.environ.get("ANALYTICS_PREFIX", "analytics/")
+    report_location = S3Location(bucket=bucket, prefix=analytics_prefix)
 
     config = AnalyticsConfig(
         bls_location=S3Location(bucket=bucket, prefix=bls_prefix),
         population_location=S3Location(bucket=bucket, prefix=population_table_prefix),
+        report_location=report_location,
     )
     LOGGER.info("Running analytics workflow")
     outputs = run_analytics(config)
@@ -42,6 +45,7 @@ if __name__ == "__main__":
     os.environ["DATA_BUCKET"] = "rearc-quest-testing-bucket"
     os.environ["BLS_PREFIX"] = "bls_data/"
     os.environ["POPULATION_TABLE_PREFIX"] = "population_data/tables/"
+    os.environ["ANALYTICS_PREFIX"] = "analytics_data/"
     print(handler(None, None))
 
 

@@ -1,10 +1,10 @@
 """Analytics queries using only pandas for approachability."""
 
 from __future__ import annotations
-
+from typing import Optional
 import pandas as pd
 
-from common.aws import S3Location, read_tabular_object
+from common.aws import S3Location, read_tabular_object, put_tabular_object
 from common.logging import get_logger
 
 LOGGER = get_logger(__name__)
@@ -17,9 +17,11 @@ class AnalyticsConfig:
         self,
         bls_location: S3Location,
         population_location: S3Location,
+        report_location: Optional[S3Location] = None,
     ) -> None:
         self.bls_location = bls_location
         self.population_location = population_location
+        self.report_location = report_location
 
 
 def load_bls_dataset(location: S3Location) -> pd.DataFrame:
@@ -105,6 +107,20 @@ def run_analytics(config: AnalyticsConfig) -> dict[str, pd.DataFrame]:
         LOGGER.info(
             "Computed analytic table", extra={"table": name, "rows": len(frame)}
         )
+
+    if config.report_location:
+        for name, frame in outputs.items():
+            put_tabular_object(
+                destination=config.report_location,
+                key=f"{name}.csv",
+                frame=frame,
+                format="csv",
+            )
+            LOGGER.info(
+                "Wrote analytic table to S3",
+                extra={"table": name, "rows": len(frame)},
+            )
+
     return outputs
 
 

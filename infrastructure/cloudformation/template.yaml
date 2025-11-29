@@ -111,7 +111,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: S3Read
+        - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -119,6 +119,7 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:ListBucket
+                  - s3:PutObject
                 Resource:
                   - !Sub arn:aws:s3:::${DataBucketName}
                   - !Sub arn:aws:s3:::${DataBucketName}/*
@@ -165,6 +166,7 @@ Resources:
           DATA_BUCKET: !Ref DataBucketName
           BLS_PREFIX: !Ref BLSPrefix
           POPULATION_TABLE_PREFIX: !Ref PopulationTablePrefix
+          ANALYTICS_PREFIX: !Ref ReportsPrefix
       Timeout: 300
 
   AnalyticsQueueMapping:
