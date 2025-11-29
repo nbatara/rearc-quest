@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Index of /</title>
+</head>
+<body>
+  <h1>Index of /</h1>
+  <ul id="listing"></ul>
+
+  <script>
+    // Update if you ever change the bucket name
+    const bucket = "rearc-quest-data-nbatara-2025";
+
+    // List everything in the bucket (ListObjectsV2)
+    const listUrl = `https://${bucket}.s3.amazonaws.com/?list-type=2`;
+
+    fetch(listUrl)
+      .then(r => r.text())
+      .then(xml => {
+        const parser = new DOMParser();
+        const data = parser.parseFromString(xml, "application/xml");
+        const contents = data.getElementsByTagName("Contents");
+        const ul = document.getElementById("listing");
+
+        for (let i = 0; i < contents.length; i++) {
+          const key = contents[i].getElementsByTagName("Key")[0].textContent;
+
+          // Skip this index.html itself
+          if (key === "index.html") continue;
+
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+
+          // Link via the static-website endpoint, relative to /
+          a.href = key;
+          a.textContent = key;
+
+          li.appendChild(a);
+          ul.appendChild(li);
+        }
+
+        if (!contents.length) {
+          ul.textContent = "No objects found.";
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById("listing").textContent = "Error loading listing.";
+      });
+  </script>
+</body>
+</html>

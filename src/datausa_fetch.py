@@ -69,6 +69,7 @@ def fetch_and_store(config: DataUSAConfig) -> None:
         format="csv",
     )
 
+
 __all__ = [
     "DataUSAConfig",
     "fetch_and_store",
@@ -89,7 +90,6 @@ if __name__ == "__main__":
         )
         s3 = boto3.client("s3")
         s3.create_bucket(Bucket=config.bucket)
-        
+
         fetch_and_store(config)
         print("Fetch and store complete.")
-

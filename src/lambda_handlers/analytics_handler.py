@@ -22,7 +22,9 @@ def handler(event, context):
 
     bucket = os.environ.get("DATA_BUCKET", "placeholder-bucket")
     bls_prefix = os.environ.get("BLS_PREFIX", "bls/")
-    population_table_prefix = os.environ.get("POPULATION_TABLE_PREFIX", "population/tables/")
+    population_table_prefix = os.environ.get(
+        "POPULATION_TABLE_PREFIX", "population/tables/"
+    )
 
     config = AnalyticsConfig(
         bls_location=S3Location(bucket=bucket, prefix=bls_prefix),
@@ -36,7 +38,7 @@ def handler(event, context):
 
 
 if __name__ == "__main__":
-    #This block is for local testing only
+    # This block is for local testing only
     os.environ["DATA_BUCKET"] = "rearc-quest-testing-bucket"
     os.environ["BLS_PREFIX"] = "bls_data/"
     os.environ["POPULATION_TABLE_PREFIX"] = "population_data/tables/"

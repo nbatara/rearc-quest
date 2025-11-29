@@ -24,9 +24,13 @@ def handler(event, context):
     bucket = os.environ.get("DATA_BUCKET", "placeholder-bucket")
     bls_prefix = os.environ.get("BLS_PREFIX", "bls/")
     population_raw_prefix = os.environ.get("POPULATION_RAW_PREFIX", "population/raw/")
-    population_table_prefix = os.environ.get("POPULATION_TABLE_PREFIX", "population/tables/")
+    population_table_prefix = os.environ.get(
+        "POPULATION_TABLE_PREFIX", "population/tables/"
+    )
 
-    bls_config = BLSSyncConfig(bucket=bucket, prefix=bls_prefix, contact_email=contact_email)
+    bls_config = BLSSyncConfig(
+        bucket=bucket, prefix=bls_prefix, contact_email=contact_email
+    )
     datausa_config = DataUSAConfig(
         bucket=bucket,
         raw_prefix=population_raw_prefix,
@@ -36,14 +40,20 @@ def handler(event, context):
 
     LOGGER.info("Starting ingest workflow")
     bls_result = perform_sync(bls_config)
-    LOGGER.info("BLS sync complete", extra={"uploaded": len(bls_result.uploaded), "deleted": len(bls_result.deleted)})
+    LOGGER.info(
+        "BLS sync complete",
+        extra={
+            "uploaded": len(bls_result.uploaded),
+            "deleted": len(bls_result.deleted),
+        },
+    )
     fetch_and_store(datausa_config)
     LOGGER.info("Population fetch complete")
     return {"status": "ok", "bls": bls_result.__dict__}
 
 
 if __name__ == "__main__":
-    #This block is for local testing only
+    # This block is for local testing only
     os.environ["CONTACT_EMAIL"] = "test@test.com"
     os.environ["DATA_BUCKET"] = "rearc-quest-testing-bucket"
     os.environ["BLS_PREFIX"] = "bls_data/"

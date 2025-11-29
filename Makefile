@@ -1,6 +1,25 @@
-
 .PHONY: build deploy clean test-ingest test-analytics test
 
+PARAM_OVERRIDES := $(shell jq -r '.Parameters \
+	| to_entries \
+	| map("\(.key)=\(.value|@sh)") \
+	| join(" ")' infrastructure/cloudformation/parameters.json)
+
+init:
+	@echo "Creating S3 Directories..."
+	aws s3 mb s3://$$DATA_BUCKET --region us-east-2 || true
+	aws s3 mb s3://$$DEPLOYMENT_BUCKET --region us-east-2 || true
+	@echo "S3 directories created"
+
+	@echo "Deploying cloudformation stack..."
+	@echo "$(PARAM_OVERRIDES)"
+	aws cloudformation deploy \
+	  --region "$$REGION" \
+	  --stack-name "$$STACK_NAME" \
+	  --template-file infrastructure/cloudformation/template.yaml \
+	  --parameter-overrides $(PARAM_OVERRIDES) \
+	  --capabilities CAPABILITY_NAMED_IAM
+	@echo "Deployed cloudformation stack..."
 build:
 	@echo "Building lambda package..."
 	docker run --rm --platform linux/amd64 \
@@ -33,19 +52,13 @@ deploy: build
 		--region us-east-2
 	@echo "Deployment complete."
 
+	@echo "Deploying index.html for public browser access..."
+	aws s3 cp index.html s3://$$DATA_BUCKET/index.html
+	@echo "Index.html deployed."
 clean:
 	@echo "Cleaning up build artifacts..."
 	rm -rf build dist lambda-package.zip
 	@echo "Cleanup complete."
-
-package-ingest:
-	@echo "Package ingest lambda (zip or image)"
-
-package-analytics:
-	@echo "Package analytics lambda with pandas layer or image"
-
-analyze-local:
-	@echo "Run analytics locally with python -m src.analytics"
 
 # You'll need to update the function-name after you deploy your cloudformation stack.
 test-ingest:

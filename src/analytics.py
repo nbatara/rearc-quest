@@ -47,8 +47,10 @@ def load_bls_dataset(location: S3Location) -> pd.DataFrame:
 
 def load_population_dataset(location: S3Location) -> pd.DataFrame:
     """Load normalized population data."""
+    df = read_tabular_object(location, key="population.csv", format="csv")
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
+    return df
 
-    return read_tabular_object(location, key="population.csv", format="csv")
 
 def population_stats(population_df: pd.DataFrame) -> pd.DataFrame:
     """Compute mean and standard deviation of annual US population for 2013-2018."""
@@ -67,16 +69,24 @@ def best_year_by_series(bls_df: pd.DataFrame) -> pd.DataFrame:
     grouped = quarterly.groupby(["series_id", "year"], as_index=False)["value"].sum()
 
     # Within each series, pick the row with the highest yearly total.
-    ordered = grouped.sort_values(["series_id", "value", "year"], ascending=[True, False, True])
+    ordered = grouped.sort_values(
+        ["series_id", "value", "year"], ascending=[True, False, True]
+    )
     winners = ordered.groupby("series_id", as_index=False).head(1)
     return winners.reset_index(drop=True)
 
 
-def series_with_population(bls_df: pd.DataFrame, population_df: pd.DataFrame) -> pd.DataFrame:
+def series_with_population(
+    bls_df: pd.DataFrame, population_df: pd.DataFrame
+) -> pd.DataFrame:
     """Join BLS values for PRS30006032 Q01 with population by year."""
 
-    bls_filtered = bls_df[(bls_df["series_id"] == "PRS30006032") & (bls_df["period"] == "Q01")]
-    merged = bls_filtered.merge(population_df, left_on="year", right_on="year", how="left")
+    bls_filtered = bls_df[
+        (bls_df["series_id"] == "PRS30006032") & (bls_df["period"] == "Q01")
+    ]
+    merged = bls_filtered.merge(
+        population_df, left_on="year", right_on="year", how="left"
+    )
     merged.rename(columns={"population": "Population"}, inplace=True)
     return merged[["series_id", "year", "period", "value", "Population"]]
 
@@ -92,7 +102,9 @@ def run_analytics(config: AnalyticsConfig) -> dict[str, pd.DataFrame]:
         "series_population": series_with_population(bls_df, population_df),
     }
     for name, frame in outputs.items():
-        LOGGER.info("Computed analytic table", extra={"table": name, "rows": len(frame)})
+        LOGGER.info(
+            "Computed analytic table", extra={"table": name, "rows": len(frame)}
+        )
     return outputs
 
 
@@ -106,7 +118,9 @@ if __name__ == "__main__":
     # This block is for local testing only
     with mock_aws():
         config = AnalyticsConfig(
-            bls_location=S3Location(bucket="rearc-quest-testing-bucket", prefix="bls_data/"),
+            bls_location=S3Location(
+                bucket="rearc-quest-testing-bucket", prefix="bls_data/"
+            ),
             population_location=S3Location(
                 bucket="rearc-quest-testing-bucket", prefix="population_data/tables/"
             ),
@@ -116,17 +130,24 @@ if __name__ == "__main__":
 
         # Create dummy files for analytics to run
         bls_key = f"{config.bls_location.prefix}pr.data.0.Current"
-        s3.put_object(Bucket=config.bls_location.bucket, Key=bls_key, Body="series_id\tyear\tperiod\tvalue\tfootnote_codes\n".encode('utf-8'))
+        s3.put_object(
+            Bucket=config.bls_location.bucket,
+            Key=bls_key,
+            Body="series_id\tyear\tperiod\tvalue\tfootnote_codes\n".encode("utf-8"),
+        )
 
         pop_key = f"{config.population_location.prefix}population.csv"
-        empty_df = pd.DataFrame({'year': [], 'nation': [], 'population': []})
-        s3.put_object(Bucket=config.population_location.bucket, Key=pop_key, Body=empty_df.to_csv(index=False).encode('utf-8'))
+        empty_df = pd.DataFrame({"year": [], "nation": [], "population": []})
+        s3.put_object(
+            Bucket=config.population_location.bucket,
+            Key=pop_key,
+            Body=empty_df.to_csv(index=False).encode("utf-8"),
+        )
 
         outputs = run_analytics(config)
         for name, df in outputs.items():
             print(f"--- {name} ---")
             print(df)
-
 
 
 __all__ = [

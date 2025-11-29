@@ -53,14 +53,16 @@ def perform_sync(config: BLSSyncConfig) -> S3SyncResult:
     """
     session = BLSRequestSession(contact_email=config.contact_email)
     ensure_bucket_prefix(config.bucket, config.prefix)
-    
+
     desired_keys = crawl_index(session, config.index_url)
     desired_set = set(desired_keys)
 
     s3 = boto3.client("s3")
     paginator = s3.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=config.bucket, Prefix=config.prefix)
-    existing_keys = set(obj["Key"].split("/")[-1] for page in pages for obj in page.get("Contents", []))
+    existing_keys = set(
+        obj["Key"].split("/")[-1] for page in pages for obj in page.get("Contents", [])
+    )
 
     uploads = sorted(desired_set - existing_keys)
     deletes = sorted(existing_keys - desired_set)
@@ -104,6 +106,8 @@ if __name__ == "__main__":
         )
         s3 = boto3.client("s3")
         s3.create_bucket(Bucket=config.bucket)
-        
+
         result = perform_sync(config)
-        print(f"Sync complete. Uploaded: {len(result.uploaded)}, Deleted: {len(result.deleted)}")
+        print(
+            f"Sync complete. Uploaded: {len(result.uploaded)}, Deleted: {len(result.deleted)}"
+        )

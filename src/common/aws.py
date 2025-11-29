@@ -48,7 +48,9 @@ def ensure_bucket_prefix(bucket: str, prefix: str) -> None:
         raise
 
 
-def sync_s3_objects(destination: S3Location, object_keys: Iterable[str]) -> S3SyncResult:
+def sync_s3_objects(
+    destination: S3Location, object_keys: Iterable[str]
+) -> S3SyncResult:
     """Plan uploads/deletes against the in-memory store.
 
     *Desired* keys are provided relative to the destination prefix; existing
@@ -70,7 +72,9 @@ def sync_s3_objects(destination: S3Location, object_keys: Iterable[str]) -> S3Sy
     # Store placeholder bytes for uploaded objects so analytics can read them
     # later if needed.
     for key in uploads:
-        client.put_object(Bucket=destination.bucket, Key=key, Body=b"", ContentType="text/plain")
+        client.put_object(
+            Bucket=destination.bucket, Key=key, Body=b"", ContentType="text/plain"
+        )
     for key in deletes:
         client.delete_object(Bucket=destination.bucket, Key=key)
 
@@ -101,10 +105,11 @@ def put_text_object(destination: S3Location, key: str, content: str) -> None:
     )
 
 
-
-def put_tabular_object(destination: S3Location, key: str, frame: pd.DataFrame, format: str) -> None:
+def put_tabular_object(
+    destination: S3Location, key: str, frame: pd.DataFrame, format: str
+) -> None:
     """Write pandas DataFrame to S3 in the requested format."""
-    
+
     if format == "parquet":
         body = frame.to_parquet(index=False)
         content_type = "application/octet-stream"
@@ -123,7 +128,9 @@ def put_tabular_object(destination: S3Location, key: str, frame: pd.DataFrame, f
     )
 
 
-def read_tabular_object(location: S3Location, key: str, format: str, **kwargs) -> pd.DataFrame:
+def read_tabular_object(
+    location: S3Location, key: str, format: str, **kwargs
+) -> pd.DataFrame:
     """Read a tabular object from S3 into a DataFrame."""
 
     client = _get_client()
